@@ -32,7 +32,7 @@ class Utils:
 
 class Code:
 	path_dirs = ("/usr/bin", "/bin", "/snap/bin")
-	variants = ("Code", "VSCodium", "Code-insiders")
+	variants = ("Code", "VSCodium", "Code - insiders")
 
 	def __init__(self):
 		self.installed_path = None
@@ -43,7 +43,7 @@ class Code:
 		logger.debug('locating installation and config directories')
 		for path in (pathlib.Path(path_dir) for path_dir in Code.path_dirs):
 			for variant in Code.variants:
-				installed_path = path / variant.lower()
+				installed_path = path / variant.lower().replace(" ", "")
 				config_path = pathlib.Path.home() / ".config" / variant
 				logger.debug('evaluating installation dir %s and config dir %s',
 				             installed_path, config_path)
