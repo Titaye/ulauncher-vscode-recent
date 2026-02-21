@@ -4,6 +4,7 @@ import json
 import logging
 import pathlib
 import sqlite3
+from urllib.parse import unquote
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
 from ulauncher.api.shared.event import (
@@ -121,6 +122,12 @@ class Code:
 				logger.warning('entry not recognized: %s', path)
 				continue
 
+			if uri.startswith("file://"):
+				decoded_path = unquote(uri[len("file://"):])
+				if not os.path.exists(decoded_path):
+					logger.debug('skipping non-existent path: %s', decoded_path)
+					continue
+
 			label = path["label"] if "label" in path else uri.split("/")[-1]
 			recents.append({
 				"uri":    uri,
@@ -148,6 +155,16 @@ class CodeExtension(Extension):
 		self.subscribe(PreferencesUpdateEvent, PreferencesUpdateEventListener())
 		self.code = Code()
 
+	@staticmethod
+	def get_display_name(recent):
+		uri = recent["uri"]
+		label = recent["label"]
+		path = unquote(uri.replace("file://", ""))
+		home = str(pathlib.Path.home())
+		if path.startswith(home):
+			path = "~" + path[len(home):]
+		return f"{label} — {path}"
+
 	def get_ext_result_items(self, query):
 		query = query.lower() if query else ""
 		recents = self.code.get_recents()
@@ -157,20 +174,22 @@ class CodeExtension(Extension):
 			lambda c: c["label"], recents), limit=20, scorer=fuzz.partial_ratio)
 		uri_matches = process.extract(query, choices=map(
 			lambda c: c["uri"], recents), limit=20, scorer=fuzz.partial_ratio)
+		seen_uris = set()
 		for match in label_matches:
 			recent = next((c for c in recents if c["label"] == match[0]), None)
-			if (recent is not None and match[1] > 95):
+			if (recent is not None and match[1] > 95 and recent["uri"] not in seen_uris):
+				seen_uris.add(recent["uri"])
 				data.append(recent)
 		for match in uri_matches:
 			recent = next((c for c in recents if c["uri"] == match[0]), None)
-			existing = next((c for c in data if c["uri"] == recent["uri"]), None)
-			if (recent is not None and existing is None):
+			if (recent is not None and recent["uri"] not in seen_uris):
+				seen_uris.add(recent["uri"])
 				data.append(recent)
 		for recent in data[:20]:
 			items.append(
 				ExtensionSmallResultItem(
 					icon=Utils.get_path(f"images/{recent['icon']}.svg"),
-					name=recent["label"],
+					name=self.get_display_name(recent),
 					on_enter=ExtensionCustomAction(recent),
 				)
 			)
